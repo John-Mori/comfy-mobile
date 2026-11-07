@@ -5,3 +5,4 @@
 .actions [hidden] { display: none; }
 button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
 button.secondary:active { background: #f6e6df; }
+img[hidden] { display: none; }
