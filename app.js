@@ -2,6 +2,7 @@ const el = (id) => document.getElementById(id);
 let base = localStorage.getItem("comfy-mobile-worker") || "https://comfy-mobile.trustsignalbot.workers.dev";
 let pass = localStorage.getItem("comfy-mobile-pass") || "";
 let timer;
+const STAGE = { queued: "受付に届いた。PCが拾うのを待ってる", processing: "PCで描いてる", done: "できた", delivery_queued: "Discordへ送る順番待ち", delivering: "Discordへ送ってる" };
 el("workerUrl").value = base; el("pass").value = pass;
 const head = () => ({ "content-type": "application/json", "x-comfy-pass": pass });
 async function api(path, options = {}) {
@@ -32,7 +33,7 @@ function settings() {
 }
 async function watch(id, started) {
   el("result").hidden = false; clearInterval(timer);
-  const tick = async () => { try { const job = await api("/api/jobs/" + id); el("status").textContent = "working: " + Math.floor((Date.now() - started) / 1000) + "s"; if (job.status === "done") { clearInterval(timer); const image = el("image"); image.src = await imageUrl(id); image.dataset.jobId = id; image.hidden = false; el("sendDiscord").hidden = false; el("status").textContent = "done"; await api("/api/jobs/" + id + "/shown", { method: "POST", body: "{}" }); } } catch (error) { el("status").textContent = error.message; } };
+  const tick = async () => { try { const job = await api("/api/jobs/" + id); const sec = Math.floor((Date.now() - started) / 1000); el("status").textContent = (STAGE[job.status] || job.status) + "(" + sec + "秒)" + (sec > 120 && job.status === "processing" ? " いつもより遅い。PCで他の作業と重なってるかも" : ""); if (job.status === "done") { clearInterval(timer); const image = el("image"); image.src = await imageUrl(id); image.dataset.jobId = id; image.hidden = false; el("sendDiscord").hidden = false; el("sendDiscord").disabled = false; el("sendDiscord").textContent = "Discordへ送る"; el("status").textContent = "できた(" + Math.floor((Date.now() - started) / 1000) + "秒)。このまま次も作れるし、下のボタンでDiscordへ送れる。画像は24時間で消える"; await api("/api/jobs/" + id + "/shown", { method: "POST", body: "{}" }); } } catch (error) { el("status").textContent = error.message; } };
   await tick(); timer = setInterval(tick, 3000);
 }
 el("connect").onclick = async () => {
@@ -42,5 +43,5 @@ el("connect").onclick = async () => {
   finally { button.disabled = false; button.textContent = "接続する"; }
 };
 el("jobForm").onsubmit = async (event) => { event.preventDefault(); save(); const button = event.submitter; button.disabled = true; try { const job = await api("/api/jobs", { method: "POST", body: JSON.stringify(settings()) }); await watch(job.id, Date.now()); } catch (error) { el("result").hidden = false; el("status").textContent = error.message; } finally { button.disabled = false; } };
-el("sendDiscord").onclick = async () => { const id = el("image").dataset.jobId; await api("/api/jobs/" + id + "/discord", { method: "POST", body: "{}" }); el("sendDiscord").disabled = true; };
+el("sendDiscord").onclick = async () => { const button = el("sendDiscord"), id = el("image").dataset.jobId; button.disabled = true; try { await api("/api/jobs/" + id + "/discord", { method: "POST", body: "{}" }); button.textContent = "送る手配をした(PCが数秒で部屋へ貼る)"; } catch (error) { button.disabled = false; el("status").textContent = error.message; } };
 if (base && pass) connect().catch(() => {});
