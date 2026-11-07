@@ -17,7 +17,7 @@ async function imageUrl(id) {
   if (!response.ok) throw new Error("image fetch failed");
   return URL.createObjectURL(await response.blob());
 }
-function options(id, values, allowNone) { const select = el(id); select.replaceChildren(); if (allowNone) select.add(new Option("none", "")); values.forEach((value) => select.add(new Option(value, value))); }
+function options(id, values, allowNone) { const select = el(id); select.replaceChildren(); if (allowNone) select.add(new Option("なし(使わない)", "")); values.forEach((value) => select.add(new Option(value, value))); }
 function save() { const data = {}; document.querySelectorAll("#jobForm input,#jobForm select,#jobForm textarea").forEach((node) => data[node.id] = node.value); localStorage.setItem("comfy-mobile-settings", JSON.stringify(data)); }
 function restore() { try { Object.entries(JSON.parse(localStorage.getItem("comfy-mobile-settings") || "{}")).forEach(([id, value]) => { if (el(id)) el(id).value = value; }); } catch (_) {} }
 async function connect() {
