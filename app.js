@@ -19,13 +19,23 @@ async function imageUrl(id) {
   if (!response.ok) throw new Error("image fetch failed");
   return URL.createObjectURL(await response.blob());
 }
-function options(id, values, allowNone) { const select = el(id); select.replaceChildren(); if (allowNone) select.add(new Option("なし(使わない)", "")); values.forEach((value) => select.add(new Option(value, value))); }
+const LORA_NAMES = [
+  [/^fusohlocal_v1[\\/]fusohlocal_v1\.safetensors$/i, () => "扶桑・自前学習の完成版(おすすめ・強さ0.7)"],
+  [/^fusohlocal_v1[\\/]fusohlocal_v1-0*(\d+)\.safetensors$/i, (m) => "扶桑・自前学習の途中保存(" + m[1] + "周目)"],
+  [/^fusoh_v0/i, () => "扶桑 v0・手描き風(旧・PixAI製)"],
+  [/^fusoh_v2/i, () => "扶桑 v2・漫画風"],
+  [/^itsumono/i, () => "いつもの(twitter用)"],
+];
+const LORA_HIDE = /minimax_h3|h3-image/i; // 動画(H3)用。この画面の絵のモデルには効かない
+function loraName(value) { for (const [re, f] of LORA_NAMES) { const m = value.match(re); if (m) return f(m); } return value.split(/[\\/]/).pop().replace(/\.safetensors$/i, ""); }
+function loraList(values) { return values.filter((v) => !LORA_HIDE.test(v)).map((v, i) => ({ v, i, rank: LORA_NAMES.findIndex(([re]) => re.test(v)) })).sort((a, b) => (a.rank < 0 ? 99 : a.rank) - (b.rank < 0 ? 99 : b.rank) || a.i - b.i).map((x) => x.v); }
+function options(id, values, allowNone, label = (v) => v) { const select = el(id); select.replaceChildren(); if (allowNone) select.add(new Option("なし(使わない)", "")); values.forEach((value) => select.add(new Option(label(value), value))); }
 function save() { const data = {}; document.querySelectorAll("#jobForm input,#jobForm select,#jobForm textarea").forEach((node) => data[node.id] = node.value); localStorage.setItem("comfy-mobile-settings", JSON.stringify(data)); }
 function restore() { try { Object.entries(JSON.parse(localStorage.getItem("comfy-mobile-settings") || "{}")).forEach(([id, value]) => { if (el(id)) el(id).value = value; }); } catch (_) {} }
 async function connect() {
   base = el("workerUrl").value.trim().replace(/\/$/, ""); pass = el("pass").value.trim();
   if (!base || !pass) throw new Error("Worker URLと合言葉を入れてね");
-  const cap = await api("/api/capabilities"); options("checkpoint", cap.checkpoints || [], false); options("lora1", cap.loras || [], true); options("lora2", cap.loras || [], true); restore();
+  const cap = await api("/api/capabilities"); options("checkpoint", cap.checkpoints || [], false); options("lora1", loraList(cap.loras || []), true, loraName); options("lora2", loraList(cap.loras || []), true, loraName); restore();
   try { localStorage.setItem("comfy-mobile-worker", base); localStorage.setItem("comfy-mobile-pass", pass); } catch (_) {}
   el("connectionCard").hidden = true; el("jobForm").hidden = false; el("connection").textContent = (cap.checkpoints || []).length ? "つながった" : "つながったけど、PCからモデルの一覧が届いていない(PCの待ち受けが止まっているかも)";
 }
