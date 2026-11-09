@@ -14,11 +14,14 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(response.status === 401 ? "合言葉が違う(前後の空白や全角に注意)" : "受付がエラーを返した: " + response.status);
   return response.status === 204 ? null : response.json();
 }
-async function imageUrl(id) {
-  const response = await fetch(base + "/api/images/" + id, { headers: { "x-comfy-pass": pass } });
+async function imageUrl(id, n = 0) {
+  const response = await fetch(base + "/api/images/" + id + (n ? "?n=" + n : ""), { headers: { "x-comfy-pass": pass } });
   if (!response.ok) throw new Error("image fetch failed");
   return URL.createObjectURL(await response.blob());
 }
+// 11-10: 枚数2〜4のとき2枚目以降をここへ並べる(以前は1枚目しか出していなかった)
+function clearMore() { const box = el("moreImages"); box.querySelectorAll("img").forEach((img) => { if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src); }); box.replaceChildren(); }
+async function showMore(id, count) { clearMore(); for (let n = 1; n < count; n++) { const img = document.createElement("img"); img.alt = "生成結果 " + (n + 1) + "枚目"; img.src = await imageUrl(id, n); el("moreImages").append(img); } }
 const LORA_NAMES = [
   [/^fusohlocal_v1[\\/]fusohlocal_v1\.safetensors$/i, () => "扶桑・自前学習の完成版(おすすめ・強さ0.7)"],
   [/^fusohlocal_v1[\\/]fusohlocal_v1-0*(\d+)\.safetensors$/i, (m) => "扶桑・自前学習の途中保存(" + m[1] + "周目)"],
@@ -45,7 +48,7 @@ function settings() {
 }
 async function watch(id, started) {
   el("result").hidden = false; clearInterval(timer);
-  const tick = async () => { try { const job = await api("/api/jobs/" + id); const sec = Math.floor((Date.now() - started) / 1000); el("status").textContent = (STAGE[job.status] || job.status) + "(" + sec + "秒)" + (sec > 120 && job.status === "processing" ? " いつもより遅い。PCで会話用のAIを載せ直している最中だと、それが終わるまで待ってから描く(最大10分ほど)" : ""); if (job.status === "done") { clearInterval(timer); const image = el("image"); image.src = await imageUrl(id); image.dataset.jobId = id; image.hidden = false; el("sendDiscord").hidden = false; el("sendDiscord").disabled = false; el("sendDiscord").textContent = "Discordへ送る"; el("deleteImage").hidden = false; el("deleteImage").disabled = false; el("deleteImage").textContent = "削除する"; el("status").textContent = "できた(" + Math.floor((Date.now() - started) / 1000) + "秒)。このまま次も作れるし、下のボタンでDiscordへ送れる。画像は24時間で消える"; await api("/api/jobs/" + id + "/shown", { method: "POST", body: "{}" }); } } catch (error) { el("status").textContent = error.message; } };
+  const tick = async () => { try { const job = await api("/api/jobs/" + id); const sec = Math.floor((Date.now() - started) / 1000); el("status").textContent = (STAGE[job.status] || job.status) + "(" + sec + "秒)" + (sec > 120 && job.status === "processing" ? " いつもより遅い。PCで会話用のAIを載せ直している最中だと、それが終わるまで待ってから描く(最大10分ほど)" : ""); if (job.status === "done") { clearInterval(timer); const image = el("image"); const count = Math.max(1, Math.min(4, job.imageCount || 1)); image.src = await imageUrl(id); image.dataset.jobId = id; image.hidden = false; await showMore(id, count); el("sendDiscord").hidden = false; el("sendDiscord").disabled = false; el("sendDiscord").textContent = "Discordへ送る"; el("deleteImage").hidden = false; el("deleteImage").disabled = false; el("deleteImage").textContent = "削除する"; el("status").textContent = "できた(" + (count > 1 ? count + "枚・" : "") + Math.floor((Date.now() - started) / 1000) + "秒)。このまま次も作れるし、下のボタンでDiscordへ送れる。画像は24時間で消える"; await api("/api/jobs/" + id + "/shown", { method: "POST", body: "{}" }); } } catch (error) { el("status").textContent = error.message; } };
   await tick(); timer = setInterval(tick, 3000);
 }
 el("pass").onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); el("connect").click(); } };
@@ -61,7 +64,7 @@ el("deleteImage").onclick = async () => {
   const button = el("deleteImage"), image = el("image"), id = image.dataset.jobId;
   if (!id || !confirm("この画像を受付から消す? ページとDiscordへ送る分が消える(PCの保存分は残る)")) return;
   button.disabled = true; button.textContent = "削除中…";
-  try { await api("/api/jobs/" + id, { method: "DELETE" }); if (image.src.startsWith("blob:")) URL.revokeObjectURL(image.src); image.removeAttribute("src"); image.hidden = true; delete image.dataset.jobId; el("sendDiscord").hidden = true; button.hidden = true; el("status").textContent = "消した。PCのComfyUIの出力フォルダには残っている"; }
+  try { await api("/api/jobs/" + id, { method: "DELETE" }); if (image.src.startsWith("blob:")) URL.revokeObjectURL(image.src); image.removeAttribute("src"); image.hidden = true; delete image.dataset.jobId; clearMore(); el("sendDiscord").hidden = true; button.hidden = true; el("status").textContent = "消した。PCのComfyUIの出力フォルダには残っている"; }
   catch (error) { button.disabled = false; button.textContent = "削除する"; el("status").textContent = error.message.includes("409") ? "Discordへ送っている最中なので、終わってから消してね" : error.message; }
 };
 if (base && pass) { el("connection").textContent = "前の合言葉でつないでいる…"; connect().catch((error) => { el("connection").textContent = "接続先と合言葉を入れる"; el("connectNote").textContent = "前の合言葉ではつながらなかった: " + error.message; }); }
